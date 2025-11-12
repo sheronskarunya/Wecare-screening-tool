@@ -1,0 +1,9 @@
+EXP 1:
+index.html
+
+git init
+git add .
+git commit -m "first commit"
+git branch -M main
+git remote add origin https://github.com/sheronskarunya/Devops2.git
+git push -u origin main
