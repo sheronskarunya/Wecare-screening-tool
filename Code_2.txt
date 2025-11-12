@@ -1,0 +1,38 @@
+import requests
+
+faq_data = [
+    {"question": "What are your customer support hours?", "answer": "Our customer support is available from 9 AM to 5 PM, Monday to Friday."},
+    {"question": "How do I return a product?", "answer": "You can return products using our online returns portal within 30 days of delivery."},
+    {"question": "Do you offer free shipping?", "answer": "We offer free shipping on orders over $50."}
+]
+
+def ask_ollama(prompt, model="qwen3-coder:480b-cloud"):
+    url = "http://localhost:11434/api/generate"
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False
+    }
+    response = requests.post(url, json=payload)
+    return response.json()['response']
+
+def faq_chatbot(user_question):
+    prompt = (
+        "You are an e-commerce FAQ assistant.\n"
+        "You can only answer using the following FAQs exactly as they are written.\n"
+        "If the user's question does not match any FAQ, say exactly: 'I don't know.'\n\n"
+        "FAQs:\n"
+    )
+    for item in faq_data:
+        prompt += f"Q: {item['question']}\nA: {item['answer']}\n\n"
+
+    prompt += f"User question: {user_question}\nAnswer:"
+    answer = ask_ollama(prompt)
+    return answer.strip()
+
+while True:
+    user_input = input("Ask your question (type 'exit' to quit): ")
+    if user_input.lower() == "exit":
+        print("Goodbye!")
+        break
+    print("Chatbot:", faq_chatbot(user_input))

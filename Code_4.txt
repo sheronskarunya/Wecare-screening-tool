@@ -1,0 +1,47 @@
+import ollama
+
+# Example past conversations
+past_examples = [
+    {"customer": "I can't log in to my account.", "agent": "I'm sorry to hear that. Please try resetting your password using the 'Forgot Password' link on the login page."},
+    {"customer": "When will my order arrive?", "agent": "Your order is expected to arrive within 3-5 business days. You can track it using the tracking number provided in your confirmation email."},
+    {"customer": "I received the wrong item.", "agent": "I apologize for the inconvenience. Please contact our support team with your order number, and we'll arrange for a replacement or refund."}
+]
+
+def build_prompt(new_query: str) -> str:
+    examples_text = "\n\n".join(
+        f"Customer: {ex['customer']}\nAgent: {ex['agent']}"
+        for ex in past_examples
+    )
+
+    prompt = f"""
+You are a polite and professional customer support assistant.
+Here are some past conversations:
+{examples_text}
+Now, draft a helpful reply to the NEW customer message:
+Customer: {new_query}
+Reply:
+"""
+    return prompt.strip()
+
+
+def suggest_reply(new_query: str) -> str:
+    prompt = build_prompt(new_query)
+    response = ollama.chat(
+        model="qwen3-coder:480b-cloud",
+        messages=[
+            {"role": "system", "content": "You are a helpful customer support assistant."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return response["message"]["content"].strip()
+
+
+if __name__ == "__main__":
+    while True:
+        new_query = input("Enter customer message (or 'exit' to quit): ")
+        if new_query.lower() == "exit":
+            print("Goodbye!")
+            break
+        reply = suggest_reply(new_query)
+        print("Suggested Reply:")
+        print(reply)

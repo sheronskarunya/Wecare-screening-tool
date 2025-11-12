@@ -1,0 +1,19 @@
+import subprocess
+
+def generate_blog_post(outline):
+    command = [
+        "ollama", "run", "qwen3-coder:480b-cloud",
+        f"Create a detailed blog post based on the following outline:\n{outline}"
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8')
+    if result.returncode == 0:
+        return result.stdout.strip()
+    else:
+        return f"Error: {result.returncode} - {result.stderr.strip()}"
+
+
+user_outline = input("Please enter the outline for the blog post (use new lines for different sections):\n")
+blog_post = generate_blog_post(user_outline)
+
+print("\nGenerated Blog Post:\n")
+print(blog_post)

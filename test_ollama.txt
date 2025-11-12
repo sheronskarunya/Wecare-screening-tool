@@ -1,0 +1,25 @@
+import ollama
+import json
+
+prompt = """
+Extract weighted keywords (0 to 1) from this user preference:
+"I like sci-fi movies"
+Return JSON like {"sci-fi": 0.9, "drama": 0.8}
+"""
+
+response = ollama.chat(model="qwen3-coder:480b-cloud", messages=[{"role": "user", "content": prompt}])
+content = response['message']['content']
+print("Response:", content)
+
+# Remove markdown code blocks if present
+if content.startswith("```json"):
+    content = content[7:]
+if content.endswith("```"):
+    content = content[:-3]
+content = content.strip()
+
+try:
+    weights = json.loads(content)
+    print("Parsed JSON:", weights)
+except Exception as e:
+    print("JSON parse error:", e)

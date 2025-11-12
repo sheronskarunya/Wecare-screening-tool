@@ -1,0 +1,122 @@
+import requests
+import datetime
+
+# Ollama API configuration
+OLLAMA_URL = "http://localhost:11434/api/generate"
+MODEL_NAME = "qwen3-coder:480b-cloud"
+
+# Basic knowledge base for quick responses
+knowledge_base = {
+    "cold": {
+        "keywords": ["sneeze", "runny nose", "congestion", "cough"],
+        "advice": "It may be a common cold. Rest, drink warm fluids, and consider over-the-counter cold remedies.",
+        "severity": "Mild"
+    },
+    "fever": {
+        "keywords": ["high temperature", "fever", "chills", "body ache"],
+        "advice": "It could be a mild viral fever. Stay hydrated and rest. If it persists, consult a doctor.",
+        "severity": "Moderate"
+    },
+}
+
+# Store conversation history
+conversation_history = []
+
+
+def check_knowledge_base(symptoms):
+    """Checks if symptoms match any known conditions in the knowledge base."""
+    for condition, data in knowledge_base.items():
+        if any(word in symptoms.lower() for word in data["keywords"]):
+            return {
+                "condition": condition,
+                "advice": data["advice"],
+                "severity": data["severity"]
+            }
+    return None
+
+
+def ollama_response(symptoms):
+    """Uses Ollama model to generate a medical analysis response."""
+    prompt = f"""
+You are an AI medical assistant.
+Analyze the following symptoms and provide:
+1. Possible common causes.
+2. Basic home care advice.
+3. When to seek professional help.
+4. Always include this disclaimer:
+   "I am not a doctor. Consult a professional for accurate diagnosis."
+
+Symptoms: {symptoms}
+"""
+    payload = {"model": MODEL_NAME, "prompt": prompt, "stream": False}
+
+    try:
+        response = requests.post(OLLAMA_URL, json=payload)
+        if response.status_code == 200:
+            return response.json().get("response", "").strip()
+        else:
+            return f"Error from Ollama: {response.text}"
+    except Exception as e:
+        return f"Error connecting to Ollama: {e}"
+
+
+def medical_assistant(symptoms):
+    """Main function to handle symptom input and response generation."""
+    record = {"user": symptoms}
+
+    kb_result = check_knowledge_base(symptoms)
+    if kb_result:
+        response = (
+            f"Possible Condition: {kb_result['condition'].title()}\n"
+            f"Severity: {kb_result['severity']}\n"
+            f"Advice: {kb_result['advice']}"
+        )
+
+        if kb_result["severity"].lower() == "severe":
+            response += "\n⚠️ EMERGENCY ALERT: Seek immediate medical attention!"
+    else:
+        response = ollama_response(symptoms)
+
+    record["assistant"] = response
+    conversation_history.append(record)
+    return response
+
+
+def export_health_report():
+    """Exports the entire chat history as a text report."""
+    if not conversation_history:
+        print("No conversation history to export.")
+        return
+
+    filename = f"health_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write("AI-Powered Medical Assistant – Health Report\n")
+        f.write("=" * 60 + "\n\n")
+
+        for i, item in enumerate(conversation_history, 1):
+            f.write(f"Interaction {i}\n")
+            f.write(f"User: {item['user']}\n")
+            f.write(f"Assistant: {item['assistant']}\n")
+            f.write("-" * 60 + "\n")
+
+    print(f"✅ Health report exported as {filename}")
+
+
+# Main program
+if __name__ == "__main__":
+    print("🩺 AI-Powered Medical Assistant")
+    print("Type 'exit' to quit, or 'report' to export your health summary.\n")
+
+    while True:
+        user_input = input("Enter your symptoms: ").strip()
+
+        if user_input.lower() == "exit":
+            print("Goodbye! Stay healthy. 👋")
+            break
+        elif user_input.lower() == "report":
+            export_health_report()
+            continue
+
+        print("\nAssistant Response:\n")
+        print(medical_assistant(user_input))
+        print("\n" + "=" * 60 + "\n")

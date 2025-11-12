@@ -1,0 +1,237 @@
+import gradio as gr
+import requests
+from PyPDF2 import PdfReader
+from docx import Document
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+import json
+import os
+
+# Ollama Configuration
+OLLAMA_URL = "http://localhost:11434/api/generate"
+MODEL_NAME = "qwen3-coder:480b-cloud"
+
+
+# -------------------- TEXT EXTRACTION --------------------
+def extract_text(file):
+    filename = file.name
+    text = ""
+
+    if filename.endswith(".pdf"):
+        reader = PdfReader(filename)
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+
+    elif filename.endswith(".docx"):
+        doc = Document(filename)
+        text = "\n".join([p.text for p in doc.paragraphs if p.text.strip() != ""])
+
+    elif filename.endswith(".txt"):
+        with open(filename, "r", encoding="utf-8") as f:
+            text = f.read()
+    else:
+        return "Unsupported file type."
+
+    return text.strip()
+
+
+# -------------------- OLLAMA GENERATION --------------------
+def ollama_generate(prompt, max_tokens=1000):
+    try:
+        response = requests.post(
+            OLLAMA_URL,
+            json={
+                "model": MODEL_NAME,
+                "prompt": prompt,
+                "temperature": 0.2,
+                "max_tokens": max_tokens,
+                "stream": True,
+            },
+            stream=True,
+        )
+
+        full_output = ""
+        for line in response.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                if "response" in obj:
+                    full_output += obj["response"]
+                if obj.get("done", False):
+                    break
+            except json.JSONDecodeError:
+                continue
+
+        return full_output.strip() if full_output else "No response content."
+
+    except Exception as e:
+        return f"Error connecting to Ollama API: {e}"
+
+
+# -------------------- DOCUMENT ANALYSIS --------------------
+def analyze_document(file, summary_level, user_question):
+    text = extract_text(file)
+    if text.startswith("Unsupported"):
+        return text, "", ""
+
+    if summary_level == "Short":
+        level_instruction = "Summarize this in 1–2 sentences capturing only the main idea."
+    elif summary_level == "Medium":
+        level_instruction = "Summarize this in one paragraph highlighting all key points."
+    else:
+        level_instruction = "Provide a detailed section-wise summary with headings and key points."
+
+    summary_prompt = f"""
+You are an AI legal & literary content assistant.
+Analyze and summarize the document at the {summary_level} level.
+
+{level_instruction}
+
+Document:
+{text}
+"""
+    summary = ollama_generate(summary_prompt, max_tokens=800)
+
+    # Optional Q&A
+    answer = ""
+    if user_question and user_question.strip():
+        qa_prompt = f"""
+You are an AI assistant analyzing the document below.
+Answer this specific question clearly and concisely.
+
+Question: {user_question}
+
+Document:
+{text}
+"""
+        answer = ollama_generate(qa_prompt, max_tokens=400)
+
+    # Extract keywords
+    key_prompt = f"""
+Extract the main keywords, legal clauses, or important entities from this text.
+Provide them as a comma-separated list.
+
+Document:
+{text}
+"""
+    keywords = ollama_generate(key_prompt, max_tokens=500)
+
+    return summary, answer, keywords
+
+
+# -------------------- EXPORT FUNCTION --------------------
+def export_content(summary, answer, keywords, format_type):
+    output_path = f"output.{format_type}"
+
+    if format_type == "pdf":
+        c = canvas.Canvas(output_path, pagesize=letter)
+        y = 750
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(100, y, "AI Document Analysis")
+        y -= 30
+
+        c.setFont("Helvetica", 12)
+        c.drawString(100, y, "Summary:")
+        y -= 20
+        for line in summary.split("\n"):
+            c.drawString(100, y, line)
+            y -= 15
+
+        if answer:
+            y -= 20
+            c.drawString(100, y, "Q&A:")
+            y -= 20
+            for line in answer.split("\n"):
+                c.drawString(100, y, line)
+                y -= 15
+
+        y -= 20
+        c.drawString(100, y, "Keywords:")
+        y -= 20
+        for line in keywords.split(","):
+            c.drawString(100, y, line.strip())
+            y -= 15
+
+        c.save()
+
+    elif format_type == "docx":
+        doc = Document()
+        doc.add_heading("AI Document Analysis", level=1)
+        doc.add_heading("Summary", level=2)
+        doc.add_paragraph(summary)
+
+        if answer:
+            doc.add_heading("Q&A", level=2)
+            doc.add_paragraph(answer)
+
+        doc.add_heading("Keywords / Key Clauses", level=2)
+        doc.add_paragraph(keywords)
+        doc.save(output_path)
+
+    elif format_type == "txt":
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(f"SUMMARY:\n{summary}\n\nQ&A:\n{answer}\n\nKEYWORDS:\n{keywords}")
+
+    return f"Exported successfully as {output_path}"
+
+
+# -------------------- GRADIO INTERFACE --------------------
+def main_ui():
+    with gr.Blocks(theme=gr.themes.Soft()) as demo:
+        gr.Markdown("# 🧠 AI Document Analyzer: Summarize, Query, Export")
+        gr.Markdown(
+            "Upload **PDF**, **DOCX**, or **TXT** files to analyze. "
+            "You can select summary level, ask questions, and export results."
+        )
+
+        with gr.Tab("📄 Upload & Analyze"):
+            file_input = gr.File(file_types=[".pdf", ".docx", ".txt"], label="Upload Document")
+            summary_level = gr.Radio(
+                ["Short", "Medium", "Detailed"],
+                label="Select Summary Level",
+                value="Medium"
+            )
+            user_question = gr.Textbox(
+                lines=2,
+                placeholder="Optional: Ask a question about the document"
+            )
+            analyze_button = gr.Button("Analyze Document")
+
+        with gr.Tab("📝 Summary"):
+            summary_output = gr.Textbox(label="Generated Summary", lines=10)
+
+        with gr.Tab("💬 Q&A"):
+            qa_output = gr.Textbox(label="Answer", lines=6)
+
+        with gr.Tab("🔑 Keywords / Clauses"):
+            keyword_output = gr.Textbox(label="Extracted Keywords or Clauses", lines=8)
+
+        with gr.Tab("📤 Export & Reporting"):
+            export_format = gr.Radio(
+                ["pdf", "docx", "txt"],
+                label="Select Export Format",
+                value="pdf"
+            )
+            export_button = gr.Button("Export Result")
+            export_message = gr.Textbox(label="Export Status")
+
+        analyze_button.click(
+            fn=analyze_document,
+            inputs=[file_input, summary_level, user_question],
+            outputs=[summary_output, qa_output, keyword_output],
+        )
+
+        export_button.click(
+            fn=export_content,
+            inputs=[summary_output, qa_output, keyword_output, export_format],
+            outputs=export_message,
+        )
+
+    demo.launch(share=False)
+
+
+if __name__ == "__main__":
+    main_ui()

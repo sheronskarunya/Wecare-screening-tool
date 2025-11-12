@@ -1,0 +1,13 @@
+import ollama
+
+client = ollama.Client()
+model = "qwen3-coder:480b-cloud"
+
+while True:
+    prompt = input("Enter your Query: ")
+    if prompt.lower() == "exit":
+        print("Bye")
+        break
+    response = client.generate(model=model, prompt=prompt)
+    print("Response from Ollama:")
+    print(response.response)

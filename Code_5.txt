@@ -1,0 +1,96 @@
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import gradio as gr
+import ollama
+import json
+
+
+data = {
+    "title": [
+        "Interstellar",
+        "Inception"
+    ],
+    "description": [
+        "A team of explorers travel through a wormhole in space to ensure humanity's survival.",
+        "A thief who enters people's dreams to steal secrets."
+    ],
+    "genres": [
+        "Sci-Fi, Adventure, Drama",
+        "Sci-Fi, Action, Thriller"
+    ]
+}
+
+
+df = pd.DataFrame(data)
+
+
+df["combined"] = df["description"] + " " + df["genres"]
+
+# Create TF-IDF vectors
+vectorizer = TfidfVectorizer(stop_words="english")
+item_vectors = vectorizer.fit_transform(df["combined"])
+
+
+
+def parse_preferences_with_ollama(user_text):
+    prompt = f"""
+    Extract weighted keywords (0 to 1) from this user preference:
+    "{user_text}"
+    Return JSON like {{"sci-fi": 0.9, "drama": 0.8}}
+    """
+    response = ollama.chat(model="qwen3-coder:480b-cloud", messages=[{"role": "user", "content": prompt}])
+    content = response['message']['content']
+    # Remove markdown code blocks if present
+    if content.startswith("```json"):
+        content = content[7:]
+    if content.endswith("```"):
+        content = content[:-3]
+    content = content.strip()
+    try:
+        weights = json.loads(content)
+    except Exception:
+        weights = {}
+    return weights
+
+
+
+def recommend_items(user_text, top_n=3):
+    preferences = parse_preferences_with_ollama(user_text)
+    if not preferences:
+        user_keywords = user_text
+    else:
+        user_keywords = " ".join(
+            [f"{word} " * int(weight * 10) for word, weight in preferences.items()]
+        )
+
+    user_vec = vectorizer.transform([user_keywords])
+    similarities = cosine_similarity(user_vec, item_vectors).flatten()
+    top_indices = similarities.argsort()[-top_n:][::-1]
+    recommendations = df.iloc[top_indices][["title", "genres", "description"]]
+    return recommendations
+
+
+
+def gradio_recommender(user_input):
+    recs = recommend_items(user_input)
+    output = ""
+    for _, row in recs.iterrows():
+        output += f"**{row['title']}**\n*{row['genres']}*\n{row['description']}\n\n"
+    return output
+
+
+
+interface = gr.Interface(
+    fn=gradio_recommender,
+    inputs=gr.Textbox(
+        label="Describe what you like",
+        placeholder="e.g., I enjoy thoughtful sci-fi stories with deep characters"
+    ),
+    outputs=gr.Markdown(label="Recommended Movies"),
+    title="Personalized Recommendation System",
+    description="Enter your movie preferences in natural language and get top personalized recommendations."
+)
+
+
+interface.launch()
