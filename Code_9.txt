@@ -1,0 +1,56 @@
+import gradio as gr
+import ollama
+from pypdf import PdfReader
+
+# --- Load PDF Data ---
+with open("travel_document.pdf", "rb") as f:
+    reader = PdfReader(f)
+    pdf_text = ""
+    for page in reader.pages:
+        pdf_text += page.extract_text() + "\n"
+
+# --- System Prompt ---
+prompt = f"""
+You are a helpful AI travel assistant.
+You must give travel recommendations based on the following data.
+When you recommend a destination, explain why based on the data.
+You can use external knowledge if it is relevant. 
+If the answer is not related to this data, say "I'm sorry, I don't have that information."
+
+dataset:
+{pdf_text}
+"""
+
+# --- Chat Function ---
+def recommend(message, history):
+    messages = [{"role": "system", "content": prompt},
+                {"role": "user", "content": message}]
+    
+    for user_msg, bot_msg in history:
+        messages.append({"role": "system", "content": bot_msg})
+        messages.append({"role": "user", "content": user_msg})
+        
+    response = ollama.chat(model='qwen3-coder:480b-cloud', messages=messages)
+    return response['message']['content']
+
+# --- Launch Interface ---
+print("Welcome to AI Travel Assistant....!")
+gr.ChatInterface(fn=recommend, title="AI Travel Assistant ✈️").launch()
+
+
+
+!pip install pypdf
+
+Dataset pdf: 
+
+Top Travel Destinations 2025
+
+1. Paris, France - Known for the Eiffel Tower, art museums, and culture.
+2. Kyoto, Japan - Famous for cherry blossoms and temples.
+3. Bali, Indonesia - Beaches, forests, and affordable resorts.
+4. Rome, Italy - Architecture, history, and Italian cuisine.
+
+Travel Tips:
+- Best time to visit: April–June or Sept–Oct.
+- Budget destinations: Southeast Asia.
+- Always have travel insurance.
