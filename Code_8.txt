@@ -1,0 +1,45 @@
+import pandas as pd
+import gradio as gr
+import ollama
+
+with open("movies.csv","r",encoding='utf-8',errors='ignore') as f:
+    movie_data = f.read()
+
+prompt = f"""
+    You are a movie recommendation Assistant
+    Find matching or similar books using title and genre
+    Generate AI explanation for each recommendation
+    Give responses from the dataset
+
+    dataset:
+    {movie_data}
+    """
+def recommend(message,history):
+    messages = [{"role":"system","content": prompt },
+               {"role":"user","content":message}]
+
+    for user_msg,bot_msg in history:
+        messages.append({"role":"system","content": bot_msg })
+        messages.append({"role":"user","content": user_msg })
+               
+        
+    response = ollama.chat(model='qwen3-coder:480b-cloud',messages = messages)
+    return response['message']['content']
+
+print("Welcome to Book Recommendation System....!")
+gr.ChatInterface(fn=recommend,title="Movie Recommendation").launch()
+
+
+
+
+!pip install ollama 
+!pip install gradio
+!pip install huggingface_hub==0.23.2
+!pip uninstall gradio huggingface_hub -y
+!pip install gradio huggingface_hub
+!pip install gradio==4.44.1 huggingface_hub==0.24.6
+!pip uninstall huggingface_hub -y
+!pip uninstall gradio -y
+!pip uninstall gradio_client -y
+
+
